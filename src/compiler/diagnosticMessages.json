@@ -4683,5 +4683,13 @@
     "Generate types for all packages without types": {
         "category": "Message",
         "code": 95068
+    },
+    "Converting '{0}' to be not '{1}'": {
+        "category": "Message",
+        "code": 95069
+    },
+    "Converting all reassigned variable to be non constant": {
+        "category": "Message",
+        "code": 95070
     }
 }

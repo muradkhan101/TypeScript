@@ -1,6 +1,6 @@
 /* @internal */
 namespace ts.codefix {
-    const fixId = "fixConvertConstToLet";
+    const fixId = "fixConvertConstantVariableOrProperty";
     const errorCodes = [
         Diagnostics.Cannot_assign_to_0_because_it_is_a_constant_or_a_read_only_property.code
     ];
@@ -9,45 +9,48 @@ namespace ts.codefix {
         errorCodes,
         getCodeActions(context) {
             const { sourceFile, span } = context;
-            const { declaration, kind, name } = getDeclaration(sourceFile, span.start);
+            const { declaration, kind } = getDeclaration(sourceFile, span.start);
             if (!declaration) return undefined;
-            const changes = textChanges.ChangeTracker.with(context, t => doChange(t, sourceFile, declaration, kind));
-            console.log("[INFO] Name", name);
+            const changes = textChanges.ChangeTracker.with(context, t => doChange(t, sourceFile, declaration));
             const type = kind === SyntaxKind.ConstKeyword ? "const" : "readonly";
-            return [createCodeFixAction(fixId, changes, [Diagnostics.Converting_0_to_be_not_1, name, type], fixId, Diagnostics.Converting_all_reassigned_variable_to_be_non_constant)];
+            const changeTo = type === "const" ? "let" : "non-readonly";
+            return [createCodeFixAction(fixId, changes, [Diagnostics.Change_0_to_1, declaration.name.getText(), changeTo], fixId, Diagnostics.Extract_constant)];
         },
         fixIds: [fixId],
         getAllCodeActions: context => codeFixAll(context, errorCodes, (changes, diag) => {
-            const { kind, declaration } = getDeclaration(diag.file, diag.start, context);
-            if (declaration) doChange(changes, context.sourceFile, declaration, kind);
+            const { declaration } = getDeclaration(diag.file, diag.start);
+            if (declaration) doChange(changes, context.sourceFile, declaration);
         }),
     });
 
-    function getDeclaration(sourceFile: SourceFile, pos: number): {declaration: Node, kind: SyntaxKind, name: DeclarationName} {
+    function getDeclaration(sourceFile: SourceFile, pos: number): {declaration: VariableDeclaration | PropertyDeclaration | undefined, kind: SyntaxKind } {
         const node = getTokenAtPosition(sourceFile, pos);
-        let declaration: Node;
+        let declaration: VariableDeclaration | PropertyDeclaration | undefined;
         let kind: SyntaxKind;
-        let name: DeclarationName;
-        if (isVarConst(node)) {
-            declaration = findAncestor(node, isVariableDeclaration);
-            name = getNameOfDeclaration(declaration);
-            kind = SyntaxKind.ConstKeyword;
-        }
-        else if (hasReadOnlyModifier(node)) {
+        if (hasReadonlyModifier(node)) {
             declaration = findAncestor(node, isPropertyDeclaration);
-            name = getNameOfDeclaration(declaration);
             kind = SyntaxKind.ReadonlyKeyword;
         }
-        return { kind, declaration, name };
+        else {
+            declaration = findAncestor(node, isVariableDeclaration);
+            kind = SyntaxKind.ConstKeyword;
+        }
+        return { declaration, kind };
     }
 
-    function doChange(changes: textChanges.ChangeTracker, sourceFile: SourceFile, node: Node, kind: SyntaxKind) {
-        if (kind === SyntaxKind.ConstKeyword) {
-            const letNode: Node = createNode(SyntaxKind.LetKeyword, node.getStart(), node.getEnd());
-            changes.replaceNode(sourceFile, node, letNode);
+    function doChange(changes: textChanges.ChangeTracker, sourceFile: SourceFile, node: VariableDeclaration | PropertyDeclaration) {
+        if (isVariableDeclaration(node)) {
+            const constNode = findChildOfKind(node, SyntaxKind.ConstKeyword, sourceFile);
+            if (constNode) {
+                const letNode = createNode(SyntaxKind.LetKeyword, constNode.getStart(), node.getEnd());
+                changes.replaceNode(sourceFile, constNode, letNode);
+            }
         }
-        // else if (kind === SyntaxKind.ReadonlyKeyword) {
-        // Add logic for handling readonly case here
-        // }
+        else if (isPropertyDeclaration(node)) {
+            const readonlyNode = findChildOfKind(node, SyntaxKind.ReadonlyKeyword, sourceFile);
+            if (readonlyNode) {
+                changes.delete(sourceFile, readonlyNode);
+            }
+        }
     }
 }

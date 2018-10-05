@@ -4,7 +4,6 @@ namespace ts.codefix {
     const errorCodes = [
         Diagnostics.Cannot_assign_to_0_because_it_is_a_constant_or_a_read_only_property.code
     ];
-
     registerCodeFix({
         errorCodes,
         getCodeActions(context) {
